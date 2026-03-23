@@ -1,0 +1,143 @@
+let glowShader;
+
+let glowFrag = `
+precision mediump float;
+
+uniform sampler2D tex0;
+uniform vec2 resolution;
+varying vec2 vTexCoord;
+
+void main() {
+  vec2 uv = vTexCoord;
+  vec2 stepSize = 1.0 / resolution;
+
+  vec4 center = texture2D(tex0, uv);
+  vec4 blur = vec4(0.0);
+
+  // sample farther pixels to make glow more visible
+  blur += texture2D(tex0, uv + vec2(-6.0 * stepSize.x, 0.0));
+  blur += texture2D(tex0, uv + vec2( 6.0 * stepSize.x, 0.0));
+  blur += texture2D(tex0, uv + vec2(0.0, -6.0 * stepSize.y));
+  blur += texture2D(tex0, uv + vec2(0.0,  6.0 * stepSize.y));
+
+  blur += texture2D(tex0, uv + vec2(-4.0 * stepSize.x, -4.0 * stepSize.y));
+  blur += texture2D(tex0, uv + vec2( 4.0 * stepSize.x, -4.0 * stepSize.y));
+  blur += texture2D(tex0, uv + vec2(-4.0 * stepSize.x,  4.0 * stepSize.y));
+  blur += texture2D(tex0, uv + vec2( 4.0 * stepSize.x,  4.0 * stepSize.y));
+
+  blur += texture2D(tex0, uv + vec2(-10.0 * stepSize.x, 0.0));
+  blur += texture2D(tex0, uv + vec2( 10.0 * stepSize.x, 0.0));
+  blur += texture2D(tex0, uv + vec2(0.0, -10.0 * stepSize.y));
+  blur += texture2D(tex0, uv + vec2(0.0,  10.0 * stepSize.y));
+
+  blur /= 12.0;
+
+  float brightness = max(max(center.r, center.g), center.b);
+
+  // stronger glow
+  vec4 finalColor = center + blur * 2.2 + blur * brightness * 1.8;
+
+  gl_FragColor = vec4(finalColor.rgb, 1.0);
+}
+`;
+
+let agents = [];
+let count = 100;
+let Mpoint = null;
+let alter = false;
+
+function setup() {
+  createCanvas(400, 400);
+  noStroke();
+
+  glowShader = createFilterShader(glowFrag);
+
+  for (let i = 0; i < count; i++) {
+    let d = random();
+    agents.push({
+      d: d,
+      r: map(d, 0, 1, 60, 140),
+      x: random(width),
+      y: random(height),
+      vx: random(-1, 1),
+      vy: random(-1, 1)
+    });
+  }
+}
+
+function draw() {
+  background(0);
+
+  if (Mpoint) {
+    Mpoint.x = mouseX;
+    Mpoint.y = mouseY;
+
+    noStroke();
+    fill(alter ? "yellow" : "blue");
+    circle(Mpoint.x, Mpoint.y, 14);
+  }
+
+  for (let a of agents) {
+    a.vx += random(-0.01, 0.01);
+    a.vy += random(-0.01, 0.01);
+
+    if (Mpoint) {
+      let dirX = Mpoint.x - a.x;
+      let dirY = Mpoint.y - a.y;
+      let distanceToM = sqrt(dirX * dirX + dirY * dirY) + 0.0001;
+      let unitX = dirX / distanceToM;
+      let unitY = dirY / distanceToM;
+
+      let isWhite = (a.d < 0.7);
+      let attract = alter ? !isWhite : isWhite;
+
+      if (attract) {
+        if (distanceToM > a.r) {
+          let attractForce = 0.02;
+          a.vx += unitX * attractForce;
+          a.vy += unitY * attractForce;
+        } else {
+          a.vx *= 0.80;
+          a.vy *= 0.80;
+        }
+      } else {
+        if (distanceToM < a.r) {
+          let repelForce = 0.05;
+          a.vx -= unitX * repelForce;
+          a.vy -= unitY * repelForce;
+        }
+      }
+    }
+
+    a.x += a.vx;
+    a.y += a.vy;
+
+    if (a.x < 0) a.x += width;
+    if (a.x > width) a.x -= width;
+    if (a.y < 0) a.y += height;
+    if (a.y > height) a.y -= height;
+
+    noStroke();
+
+    if (a.d < 0.7) {
+      fill(255);
+    } else {
+      fill(255, 50, 50);
+    }
+
+    circle(a.x, a.y, 6);
+  }
+
+  glowShader.setUniform("resolution", [width, height]);
+  filter(glowShader);
+}
+
+function mousePressed() {
+  if (!Mpoint) {
+    Mpoint = { x: mouseX, y: mouseY };
+  } else {
+    alter = !alter;
+    Mpoint.x = mouseX;
+    Mpoint.y = mouseY;
+  }
+}
